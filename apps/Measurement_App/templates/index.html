@@ -1,3 +1,89 @@
 {% extends base %}
 {% block title %}SpectAcoular Application Layout{% endblock %}
-{% block postamble %}   <style>       {% include "styles.css" %}   </style>{% endblock %}
+{% block postamble %}
+   <style>
+       {% include "styles.css" %}
+   </style>
+   <script>
+       (function() {
+           let mouseMoveTimeout;
+           const body = document.body;
+           
+           function showControls() {
+               const controls = document.querySelectorAll('.autodisplay-control');
+               controls.forEach(function(control) {
+                   control.style.opacity = '1';
+               });
+               body.classList.add('autodisplay-active');
+               clearTimeout(mouseMoveTimeout);
+               mouseMoveTimeout = setTimeout(function() {
+                   controls.forEach(function(control) {
+                       control.style.opacity = '0';
+                   });
+                   body.classList.remove('autodisplay-active');
+               }, 2000);
+           }
+           
+           function handleMovement() {
+               showControls();
+           }
+           
+           function positionControlsOverlay() {
+               // Force controls to be positioned as overlays and remove from layout flow
+               const controlsContainer = document.querySelector('.autodisplay-controls-container');
+               const column = document.querySelector('.autodisplay-root .bk-column');
+               
+               if (controlsContainer) {
+                   controlsContainer.style.position = 'fixed';
+                   controlsContainer.style.bottom = '20px';
+                   controlsContainer.style.left = '50%';
+                   controlsContainer.style.transform = 'translateX(-50%)';
+                   controlsContainer.style.zIndex = '10001';
+                   controlsContainer.style.margin = '0';
+                   controlsContainer.style.padding = '0';
+                   // Remove from layout flow
+                   controlsContainer.style.width = 'auto';
+                   controlsContainer.style.height = 'auto';
+               }
+               
+               // Make sure the column only shows the figure in layout
+               if (column) {
+                   const children = Array.from(column.children);
+                   children.forEach(function(child, index) {
+                       if (child.classList.contains('autodisplay-figure-container')) {
+                           child.style.position = 'absolute';
+                           child.style.top = '0';
+                           child.style.left = '0';
+                           child.style.width = '100vw';
+                           child.style.height = '100vh';
+                           child.style.zIndex = '1';
+                       } else if (child.classList.contains('autodisplay-controls-container')) {
+                           // Already positioned as fixed above
+                       } else {
+                           child.style.display = 'none';
+                       }
+                   });
+               }
+           }
+           
+           document.addEventListener('DOMContentLoaded', function() {
+               document.addEventListener('mousemove', handleMovement);
+               document.addEventListener('mouseenter', handleMovement);
+               document.addEventListener('touchstart', handleMovement);
+               document.addEventListener('touchmove', handleMovement);
+               
+               // Position controls after a short delay to ensure Bokeh has rendered
+               setTimeout(positionControlsOverlay, 100);
+               setTimeout(positionControlsOverlay, 500);
+               setTimeout(positionControlsOverlay, 1000);
+           });
+           
+           // Also run when Bokeh finishes rendering
+           if (window.Bokeh) {
+               document.addEventListener('DOMContentLoaded', function() {
+                   setTimeout(positionControlsOverlay, 2000);
+               });
+           }
+       })();
+   </script>
+{% endblock %}

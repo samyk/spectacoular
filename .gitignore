@@ -24,3 +24,5 @@ tests/.hypothesis/*
 .vscode/launch.json
 .vscode/settings.json
 */three_sources.h5
+
+.DS_Store

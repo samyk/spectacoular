@@ -15,6 +15,7 @@ from bokeh.models import (
     ColorBar,
     Spacer,
     Tabs,
+    CustomJS,
 )
 from bokeh.models import TabPanel as Panel 
 from bokeh.models.glyphs import Scatter
@@ -33,7 +34,7 @@ from bokeh.models.widgets.inputs import NumericInput
 from bokeh.palettes import Viridis256
 from bokeh.plotting import curdoc, figure
 from cam import CameraComponent
-from layout import COLOR
+from layout import COLOR, button_height
 from log import LogHandler
 
 import spectacoular as sp
@@ -123,7 +124,7 @@ use_sinus = False
 
 if args.device == 'sounddevice':
     from app import SoundDeviceControl
-    grid = sp.RectGrid( x_min=-0.5, x_max=0.5, y_min=-0.5, y_max=0.5, z=0.5, increment=0.025)
+    grid = sp.RectGrid( x_min=-0.5, x_max=0.5, y_min=-0.375, y_max=0.375, z=0.5, increment=0.025)
     control = SoundDeviceControl(doc=doc, logger=log.logger, blocksize=args.blocksize,
         steer=ac.SteeringVector(grid=grid, mics=mics),
     )    
@@ -158,12 +159,31 @@ amp_fig.xgrid.visible = False
 amp_fig.xaxis.major_label_orientation = np.pi/2
 amp_fig.toolbar.logo=None
 
-# MicGeom / Sourcemap Figure
+# MicGeom / Sourcemap Figure (standard mode)
 mics_beamf_fig = figure(
         tooltips=[("Lp/dB", "@level"), ("Channel Index", "@channels"),("(x,y)", "(@x, @y)"),],
         tools = 'pan,wheel_zoom,reset',
          match_aspect=True, aspect_ratio=1, width=1400,
+         sizing_mode='scale_width',
         )
+
+# Autodisplay Figure (no toolbar, no microphone circles, no hover, no point draw)
+# Use stretch_both to fill full width and height
+mics_beamf_fig_autodisplay = figure(
+        tooltips=None,  # Disable hover tooltips
+        tools = '',  # No tools in autodisplay
+         match_aspect=True, aspect_ratio=1,
+         sizing_mode='stretch_both',  # Fill full width and height
+         toolbar_location=None,  # Hide toolbar
+        )
+# Disable all grid lines
+mics_beamf_fig_autodisplay.xgrid.visible = False
+mics_beamf_fig_autodisplay.ygrid.visible = False
+mics_beamf_fig_autodisplay.xaxis.visible = False
+mics_beamf_fig_autodisplay.yaxis.visible = False
+mics_beamf_fig_autodisplay.outline_line_color = None
+mics_beamf_fig_autodisplay.background_fill_color = 'black'
+mics_beamf_fig_autodisplay.border_fill_color = 'black'
 
 # =============================================================================
 # DEFINE COLUMN DATA SOURCES
@@ -185,6 +205,9 @@ mic_presenter = sp.MicGeomPresenter(source=mics, auto_update=True)
 calibration = Calibration(doc=doc, control=control)
 camera = CameraComponent(doc=doc, figure=mics_beamf_fig)
 
+# Create camera component for autodisplay (separate instance)
+camera_autodisplay = CameraComponent(doc=doc, figure=mics_beamf_fig_autodisplay)
+
 # Amplitude Bar Plot
 amp_bar = amp_fig.vbar(
     x='channels', width=0.5, bottom=0,top='level', color='colors', source=amp_cds)
@@ -198,17 +221,28 @@ mics_beamf_fig.add_layout(ColorBar(color_mapper=beamf_color_mapper,location=(0,0
                            title="dB",
                            title_standoff=10),'right')
 
-# Microphone Geometry Plot
+# Beamforming image for autodisplay (shares same data source)
+bf_image_autodisplay = mics_beamf_fig_autodisplay.image(image='level', x=grid.x_min, y=grid.y_min, 
+        dw=grid.x_max-grid.x_min, dh=grid.y_max-grid.y_min,
+                color_mapper=beamf_color_mapper,
+                source=beamf_cds)
+# Sync ranges
+mics_beamf_fig_autodisplay.x_range = mics_beamf_fig.x_range
+mics_beamf_fig_autodisplay.y_range = mics_beamf_fig.y_range
+
+# Microphone Geometry Plot (disable point draw by default)
 mic_layout = sp.layouts.MicGeomComponent(mic_alpha=0.4,
     glyph=Scatter(marker='circle_cross', x='x', y='y', fill_color='colors', size='sizes', 
     fill_alpha='alpha', line_alpha='alpha'),
-    figure=mics_beamf_fig, presenter=mic_presenter, allow_point_draw=True,
+    figure=mics_beamf_fig, presenter=mic_presenter, allow_point_draw=False,
     )
 mic_presenter.update(**{
      'sizes':np.array([MICSIZE]*mics.mpos_tot.shape[1]),'colors':[COLOR[1]]*mics.mpos_tot.shape[1]})
 
 mics_beamf_fig.rect( # draw rect grid bounds (dotted)
     alpha=1.,color='black',fill_alpha=0,line_width=2, source=grid_data)#line_color="#213447")
+
+# No grid rectangle for autodisplay - we want clean video display
 
 
 # =============================================================================
@@ -237,11 +271,11 @@ invalid_input_channels = MultiSelect(
     description="Select which input channels should not be used for beamforming",
     value=[])
 control.beamf.source.source.source.source.source.set_widgets(**{'invalid_channels':invalid_input_channels})
-auto_level_toggle = Toggle(label="Auto Level", button_type="success",active=True)
-dynamic_range = NumericInput(value=10, title="Dynamic Range/dB")
+auto_level_toggle = Toggle(label="Auto Level", button_type="success",active=False)  # Disabled by default
+dynamic_range = Slider(start=0, end=50, value=10, step=1, title="Dynamic Range/dB")
 snapshot_avg = NumericInput(value=1, title="Snapshots to Average")
-bf_max_level = Slider(start=0, end=140, value=100, step=1, title="Peak Level/dB")
-bf_alpha = Slider(start=0, end=1, step=0.05, value=1, title="Sourcemap Alpha")
+bf_max_level = Slider(start=0, end=140, value=20, step=1, title="Peak Level/dB")  # Set to 20 by default
+bf_alpha = Slider(start=0, end=1, step=0.05, value=0.5, title="Sourcemap Alpha")
 
 rgWidgets = grid.get_widgets()
 zSlider = Slider(start=0.01, end=10.0, value=grid.z, step=.02, title="z",disabled=False)
@@ -276,13 +310,21 @@ control.widgets_enable['beamf'].append(dynamic_range)
 # =============================================================================
 
 def update_app():  # only update figure when tab is active
-    if tabs.active == 0: 
-        update_amp_bar_plot()
-    if tabs.active == 1:
+    if autodisplay_active[0]:
+        # In autodisplay mode, always update beamforming
         if control.beamf_toggle.active:
             update_beamforming_plot()
         else:
             update_mic_geom_plot()
+    else:
+        # Standard mode - check tabs
+        if tabs.active == 0: 
+            update_amp_bar_plot()
+        if tabs.active == 1:
+            if control.beamf_toggle.active:
+                update_beamforming_plot()
+            else:
+                update_mic_geom_plot()
     if use_sinus:
         control.update_buffer_bar()
 
@@ -310,6 +352,9 @@ def update_beamforming_plot():
             maxValue = beamf_cds.data['level'][0].max()
             beamf_color_mapper.high = maxValue
             beamf_color_mapper.low = maxValue - dynamic_range.value
+        # Update autodisplay figure if it exists
+        if 'bf_image_autodisplay' in globals():
+            bf_image_autodisplay.glyph.update()
 
 def update_view(arg):
     if arg:
@@ -317,7 +362,8 @@ def update_view(arg):
             update_app, int(control.update_period.value))
     if not arg:
         [thread.join() for thread in control._disp_threads]
-        doc.remove_periodic_callback(control._view_callback_id)
+        if control._view_callback_id is not None:
+            doc.remove_periodic_callback(control._view_callback_id)
 control.display_toggle.on_click(update_view)
 
 def update_channel_labels(attr,old,new):
@@ -346,8 +392,14 @@ def dynamic_slider_callback(attr, old, new):
     if not auto_level_toggle.active:
         beamf_color_mapper.high = bf_max_level.value
         beamf_color_mapper.low = bf_max_level.value - dynamic_range.value
+
+# Initialize color mapper with default values (auto level disabled, peak level 20)
+beamf_color_mapper.high = bf_max_level.value
+beamf_color_mapper.low = bf_max_level.value - dynamic_range.value
+
 dynamic_range.on_change('value', dynamic_slider_callback)    
 bf_max_level.on_change('value', dynamic_slider_callback)
+auto_level_toggle.on_change('active', lambda attr, old, new: dynamic_slider_callback('active', None, new) if not new else None)
 
 def snapshot_avg_callback(attr, old, new):
     control.beamf.source.num_per_average = args.blocksize*new
@@ -383,7 +435,12 @@ control.beamf_toggle.on_click(clear_beamforming_image)
 
 def bf_alpha_callback(attr, old, new):
     bf_image.glyph.global_alpha = new
+    if 'bf_image_autodisplay' in globals():
+        bf_image_autodisplay.glyph.global_alpha = new
 bf_alpha.on_change("value", bf_alpha_callback)
+# Initialize alpha to 0.5 (fix the actual value)
+bf_alpha.value = 0.5
+bf_image.glyph.global_alpha = 0.5
 
 
 rgWidgets['x_min'].on_change('value', update_bf_plot)
@@ -445,13 +502,138 @@ tabs = Tabs(tabs=control_tabs, sizing_mode='inherit', width=1700, height=800)
 
 control_column = control.get_widgets()
 
-root = column(
+# Create Autodisplay button
+autodisplay_button = Button(label="Autodisplay", button_type="success", sizing_mode="stretch_width", height=button_height)
+
+# Create exit button for full-window mode (initially hidden)
+exit_autodisplay_button = Button(label="✕", button_type="danger", width=40, height=40, css_classes=["exit-autodisplay", "autodisplay-control"])
+
+# Create overlay controls for autodisplay (positioned at bottom)
+autodisplay_controls_row = row(
+    exit_autodisplay_button,
+    auto_level_toggle,
+    freqSlider,
+    dynamic_range,
+    bf_max_level,
+    css_classes=["autodisplay-controls", "autodisplay-control"],
+    sizing_mode='scale_width',
+)
+
+autodisplay_controls_container = column(
+    autodisplay_controls_row,
+    css_classes=["autodisplay-controls-container", "autodisplay-control"],
+    sizing_mode='scale_width',
+)
+
+# Full-window autodisplay layout - use a custom div structure for proper overlay
+autodisplay_wrapper = Div(
+    text='',
+    css_classes=["autodisplay-wrapper"],
+    width=0, height=0,  # Hidden, just for structure
+)
+
+# Full-window autodisplay layout - figure fills entire viewport
+autodisplay_layout = column(
+    mics_beamf_fig_autodisplay,
+    sizing_mode='stretch_both',
+    css_classes=["autodisplay-mode", "autodisplay-figure-container"],
+    )
+
+# Standard interface layout
+standard_layout = column(
     row(
         Spacer(width=10),
         control_column,
         Spacer(width=20),
         tabs,
     ),
+    css_classes=["standard-mode"]
 )
+
+# Add Autodisplay button to control column
+control_column.children.insert(1, autodisplay_button)
+
+# Track current mode
+autodisplay_active = [False]  # Use list to allow modification in nested functions
+
+def enter_autodisplay_mode():
+    """Enter full-window autodisplay mode"""
+    if autodisplay_active[0]:
+        return
+    
+    autodisplay_active[0] = True
+    
+    # Set alpha to 0.5 for both figures
+    bf_alpha.value = 0.5
+    bf_image.glyph.global_alpha = 0.5
+    if 'bf_image_autodisplay' in globals():
+        bf_image_autodisplay.glyph.global_alpha = 0.5
+    
+    # Enable camera display for autodisplay figure
+    if 'active' in camera_autodisplay.widgets:
+        camera_autodisplay.widgets['active'].active = True
+    
+    # Enable display toggle (microphones) - but don't show them in autodisplay
+    if not control.display_toggle.active:
+        control.display_toggle.active = True
+    
+    # Enable beamforming toggle
+    if not control.beamf_toggle.active:
+        control.beamf_toggle.active = True
+    
+    # Create layout with figure filling viewport and controls as absolute overlays
+    # Exit button is now in the controls row, so we don't add it separately
+    autodisplay_root = column(
+        autodisplay_layout,
+        autodisplay_controls_container,
+        css_classes=["autodisplay-root"],
+        sizing_mode='stretch_both',
+    )
+    
+    # Switch to autodisplay layout
+    doc.clear()
+    doc.add_root(autodisplay_root)
+    doc.title = "Measurement App - Autodisplay"
+
+def exit_autodisplay_mode():
+    """Exit full-window autodisplay mode"""
+    if not autodisplay_active[0]:
+        return
+    
+    autodisplay_active[0] = False
+    
+    # Disable camera in autodisplay figure
+    if 'active' in camera_autodisplay.widgets:
+        camera_autodisplay.widgets['active'].active = False
+    
+    # Ensure standard figure has proper sizing
+    mics_beamf_fig.sizing_mode = 'scale_width'
+    mics_beamf_fig.width = 1400
+    
+    # Switch back to standard layout
+    doc.clear()
+    doc.add_root(standard_layout)
+    doc.title = "Measurement App"
+
+# Set up callbacks
+autodisplay_button.on_click(lambda: enter_autodisplay_mode())
+exit_autodisplay_button.on_click(lambda: exit_autodisplay_mode())
+
+# Set default to autodisplay mode - create initial root
+# Note: Controls are added to column but CSS positions them as fixed overlays
+# Exit button is now in the controls row
+autodisplay_root_init = column(
+    autodisplay_layout,
+    autodisplay_controls_container,
+    css_classes=["autodisplay-root"],
+    sizing_mode='stretch_both',
+)
+root = autodisplay_root_init
 doc.add_root(root)
-doc.title = "Measurement App"
+doc.title = "Measurement App - Autodisplay"
+
+# Initialize autodisplay mode on startup
+def init_autodisplay():
+    enter_autodisplay_mode()
+
+doc.add_next_tick_callback(init_autodisplay)

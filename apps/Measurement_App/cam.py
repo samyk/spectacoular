@@ -44,7 +44,7 @@ class CameraComponent(BaseSpectacoular):
     extent_width = Float(XCAM[2], desc="width of the camera image")
     extent_height = Float(XCAM[3], desc="height of the camera image")
     alpha = Float(1.0, desc="the alpha value of the image")
-    flip_horizontal = Bool(False, desc="Flip the camera image horizontally")
+    flip_horizontal = Bool(True, desc="Flip the camera image horizontally")
 
     figure = Instance(figure)
 
@@ -80,7 +80,7 @@ class CameraComponent(BaseSpectacoular):
         'extent_width': {"title": "Width", "value": XCAM[2], "mode": "float", "disabled": not HAVE_CV2},
         'extent_height': {"title": "Height", "value": XCAM[3], "mode": "float", "disabled": not HAVE_CV2},
         'alpha': {"title": "Image Alpha", 'start':0, 'end':1, 'step':0.05},
-        'flip_horizontal': {"label": "Flip Horizontal", "active": False, "disabled": not HAVE_CV2, "button_type":"default"},
+        'flip_horizontal': {"label": "Flip Horizontal", "active": True, "disabled": not HAVE_CV2, "button_type":"default"},
     })
 
     widgets = Property()
